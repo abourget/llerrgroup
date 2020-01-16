@@ -25,7 +25,6 @@ func Test_ParallelRuns(t *testing.T) {
 			time.Sleep(time.Millisecond * 10)
 			return nil
 		})
-
 	}
 	errCh := make(chan error, 1)
 	go func() {
@@ -42,6 +41,65 @@ func Test_ParallelRuns(t *testing.T) {
 	assert.Equal(t, uint32(12), cnt.Load())
 	assert.Equal(t, 12, g.CallsCount())
 
+}
+
+func Test_ParallelMixed(t *testing.T) {
+	var cnt atomic.Uint32
+	g := New(8)
+	for i := 0; i < 12; i++ {
+		if stop := g.Stop(); stop != false {
+			t.Fail()
+		}
+
+		if i%2 == 0 {
+			g.Free()
+		} else {
+			g.Go(func() error {
+				cnt.Add(1)
+				time.Sleep(time.Millisecond * 10)
+				return nil
+			})
+		}
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		err := g.Wait()
+		errCh <- err
+	}()
+	select {
+	case <-time.After(time.Millisecond * 30):
+		t.Fail()
+	case err := <-errCh:
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, uint32(6), cnt.Load())
+	assert.Equal(t, 6, g.CallsCount())
+
+}
+
+func Test_ParallelFrees(t *testing.T) {
+	g := New(8)
+	for i := 0; i < 12; i++ {
+		if stop := g.Stop(); stop != false {
+			t.Fail()
+		}
+
+		g.Free()
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		err := g.Wait()
+		errCh <- err
+	}()
+	select {
+	case <-time.After(time.Millisecond * 30):
+		t.Fail()
+	case err := <-errCh:
+		require.NoError(t, err)
+	}
+
+	assert.Equal(t, 0, g.CallsCount())
 }
 
 func Test_ParallelLimits(t *testing.T) {

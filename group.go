@@ -60,6 +60,15 @@ func (g *Group) CallsCount() int {
 	return g.callsCount
 }
 
+func (g *Group) Free() {
+	g.threadsLock.Lock()
+	g.runningThreads -= 1
+	if len(g.threadFreed) == 0 {
+		g.threadFreed <- true
+	}
+	g.threadsLock.Unlock()
+}
+
 func (g *Group) Go(f func() error) {
 	g.Group.Go(func() error {
 		err := f()
@@ -76,12 +85,7 @@ func (g *Group) Go(f func() error) {
 		}
 		g.closeLock.Unlock()
 
-		g.threadsLock.Lock()
-		g.runningThreads -= 1
-		if len(g.threadFreed) == 0 {
-			g.threadFreed <- true
-		}
-		g.threadsLock.Unlock()
+		g.Free()
 
 		return err
 	})
